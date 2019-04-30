@@ -54,39 +54,13 @@ namespace Microsoft.Azure.Documents.ChangeFeedProcessor.PartitionManagement
         public async Task<IReadOnlyList<RemainingPartitionWork>> GetEstimatedRemainingWorkPerPartitionAsync()
         {
             IReadOnlyList<ILease> leases = await this.leaseContainer.GetAllLeasesAsync().ConfigureAwait(false);
-            if (leases == null || leases.Count == 0)
-            {
-                return new List<RemainingPartitionWork>().AsReadOnly();
-            }
+            return await this.GetEstimatedRemainingWorkForPartitionAsync(leases);
+        }
 
-            var tasks = Partitioner.Create(leases)
-                .GetPartitions(this.degreeOfParallelism)
-                .Select(partition => Task.Run(async () =>
-                {
-                    var partialResults = new List<RemainingPartitionWork>();
-                    using (partition)
-                    {
-                        while (partition.MoveNext())
-                        {
-                            ILease item = partition.Current;
-                            try
-                            {
-                                if (string.IsNullOrEmpty(item?.PartitionId)) continue;
-                                var result = await this.GetRemainingWorkAsync(item);
-                                partialResults.Add(new RemainingPartitionWork(item.PartitionId, result));
-                            }
-                            catch (DocumentClientException ex)
-                            {
-                                Logger.WarnException($"Getting estimated work for {item.PartitionId} failed!", ex);
-                            }
-                        }
-                    }
-
-                    return partialResults;
-                })).ToArray();
-
-            var results = await Task.WhenAll(tasks);
-            return results.SelectMany(r => r).ToList().AsReadOnly();
+        public async Task<IReadOnlyList<RemainingPartitionWork>> GetEstimatedRemainingWorkForOwnedPartitionsAsync()
+        {
+            IReadOnlyList<ILease> leases = (await this.leaseContainer.GetOwnedLeasesAsync().ConfigureAwait(false)).ToList().AsReadOnly();
+            return await this.GetEstimatedRemainingWorkForPartitionAsync(leases);
         }
 
         /// <summary>
@@ -139,6 +113,43 @@ namespace Microsoft.Azure.Documents.ChangeFeedProcessor.PartitionManagement
             }
 
             return parsed;
+        }
+
+        private async Task<IReadOnlyList<RemainingPartitionWork>> GetEstimatedRemainingWorkForPartitionAsync(IReadOnlyList<ILease> leases)
+        {
+            if (leases == null || leases.Count == 0)
+            {
+                return new List<RemainingPartitionWork>().AsReadOnly();
+            }
+
+            var tasks = Partitioner.Create(leases)
+                .GetPartitions(this.degreeOfParallelism)
+                .Select(partition => Task.Run(async () =>
+                {
+                    var partialResults = new List<RemainingPartitionWork>();
+                    using (partition)
+                    {
+                        while (partition.MoveNext())
+                        {
+                            ILease item = partition.Current;
+                            try
+                            {
+                                if (string.IsNullOrEmpty(item?.PartitionId)) continue;
+                                var result = await this.GetRemainingWorkAsync(item);
+                                partialResults.Add(new RemainingPartitionWork(item.PartitionId, result));
+                            }
+                            catch (DocumentClientException ex)
+                            {
+                                Logger.WarnException($"Getting estimated work for {item.PartitionId} failed!", ex);
+                            }
+                        }
+                    }
+
+                    return partialResults;
+                })).ToArray();
+
+            var results = await Task.WhenAll(tasks);
+            return results.SelectMany(r => r).ToList().AsReadOnly();
         }
 
         private async Task<long> GetRemainingWorkAsync(ILease existingLease)

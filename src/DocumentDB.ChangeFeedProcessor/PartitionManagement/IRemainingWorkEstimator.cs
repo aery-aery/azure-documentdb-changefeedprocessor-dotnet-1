@@ -23,5 +23,11 @@ namespace Microsoft.Azure.Documents.ChangeFeedProcessor.PartitionManagement
         /// </summary>
         /// <returns>An array of an estimation of pending work in amount of documents per partitions.</returns>
         Task<IReadOnlyList<RemainingPartitionWork>> GetEstimatedRemainingWorkPerPartitionAsync();
+
+        /// <summary>
+        /// Calculates an estimate of the pending work remaining to be read in the Change Feed in amount of documents per partition for owned partitions.
+        /// </summary>
+        /// <returns>An array of an estimation of pending work in amount of documents per partitions.</returns>
+        Task<IReadOnlyList<RemainingPartitionWork>> GetEstimatedRemainingWorkForOwnedPartitionsAsync();
     }
 }
